@@ -25,3 +25,5 @@ build/
 
 # sql test
 *.sql
+
+backend/chat/management/
