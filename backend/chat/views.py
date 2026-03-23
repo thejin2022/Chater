@@ -1,5 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
@@ -12,7 +14,6 @@ from .models import (
     ChatInvitation,
     ChatInvitationStatus,
     ChatSession,
-    ChatSessionMember,
     ChatSessionType,
     generate_direct_pair_key,
 )
@@ -46,9 +47,13 @@ class ChatSessionView(APIView):
 
         chat_sessions = ChatSession.objects.filter(
             members__user=request.user
-        ).select_related("owner").order_by("-update_date")
+        ).select_related("owner").prefetch_related("members__user").order_by("-update_date")
 
-        serializer = ChatSessionSerializer(chat_sessions, many=True)
+        serializer = ChatSessionSerializer(
+            chat_sessions,
+            many=True,
+            context={"request": request},
+        )
         return Response(serializer.data)
 
 
@@ -59,7 +64,10 @@ class ChatSessionView(APIView):
         chat_session = create_group_chat_session(request.user)
 
         return Response(
-            ChatSessionSerializer(chat_session).data,
+            ChatSessionSerializer(
+                chat_session,
+                context={"request": request},
+            ).data,
             status=status.HTTP_201_CREATED,
         )
 
@@ -105,7 +113,12 @@ class ChatSessionDetailView(APIView):
         chat_session.save(update_fields=["name", "update_date"])
         _notify_room_renamed(chat_session)
 
-        return Response(ChatSessionSerializer(chat_session).data)
+        return Response(
+            ChatSessionSerializer(
+                chat_session,
+                context={"request": request},
+            ).data
+        )
 
 
 class DirectChatSessionView(APIView):
@@ -180,7 +193,10 @@ class DirectChatSessionView(APIView):
             _notify_invitee(invitation)
 
         return Response(
-            ChatSessionSerializer(chat_session).data,
+            ChatSessionSerializer(
+                chat_session,
+                context={"request": request},
+            ).data,
             status=status.HTTP_200_OK,
         )
 
@@ -196,18 +212,54 @@ class ChatSessionMessageView(APIView):
 
     def get(self, request, uri):
         chat_session = get_object_or_404(ChatSession, uri=uri)
-        
-        # 檢查是不是成員
+
         if not chat_session.members.filter(user=request.user).exists():
             return Response(
                 {"detail": "You are not a member of this chat session."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        messages = chat_session.messages.order_by("create_date")
+        raw_limit = request.query_params.get("limit", "50")
+        try:
+            limit = int(raw_limit)
+        except ValueError:
+            return Response(
+                {"detail": "limit must be an integer"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        limit = max(1, min(limit, 100))
 
-        serializer = ChatSessionMessageSerializer(messages, many=True)
-        return Response(serializer.data)
+        messages_qs = chat_session.messages.order_by("-create_date", "-id")
+
+        before = request.query_params.get("before")
+        if before:
+            before_dt = parse_datetime(before)
+            if before_dt is None:
+                return Response(
+                    {"detail": "before must be ISO datetime"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if timezone.is_naive(before_dt):
+                before_dt = timezone.make_aware(
+                    before_dt,
+                    timezone.get_current_timezone(),
+                )
+            messages_qs = messages_qs.filter(create_date__lt=before_dt)
+
+        rows = list(messages_qs[: limit + 1])
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+        rows.reverse()
+
+        next_before = rows[0].create_date.isoformat() if has_more and rows else None
+        serializer = ChatSessionMessageSerializer(rows, many=True)
+        return Response(
+            {
+                "results": serializer.data,
+                "has_more": has_more,
+                "next_before": next_before,
+            }
+        )
 
     def post(self, request, uri):
         chat_session = get_object_or_404(ChatSession, uri=uri)
@@ -311,7 +363,10 @@ class ChatSessionMemberView(APIView):
         _notify_invitee(invitation)
 
         return Response(
-            ChatInvitationSerializer(invitation).data,
+            ChatInvitationSerializer(
+                invitation,
+                context={"request": request},
+            ).data,
             status=status.HTTP_201_CREATED,
         )
 
@@ -331,8 +386,14 @@ class ChatInvitationListView(APIView):
             "inviter",
             "chat_session",
             "chat_session__owner",
+        ).prefetch_related(
+            "chat_session__members__user",
         ).order_by("-create_date")
-        serializer = ChatInvitationSerializer(invitations, many=True)
+        serializer = ChatInvitationSerializer(
+            invitations,
+            many=True,
+            context={"request": request},
+        )
         return Response(serializer.data)
 
 
@@ -378,7 +439,10 @@ class ChatInvitationRespondView(APIView):
             reject_invitation(invitation)
 
         return Response(
-            ChatInvitationSerializer(invitation).data,
+            ChatInvitationSerializer(
+                invitation,
+                context={"request": request},
+            ).data,
             status=status.HTTP_200_OK,
         )
 

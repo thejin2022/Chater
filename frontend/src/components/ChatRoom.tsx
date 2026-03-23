@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChatMember, ChatMessage } from "../types/chat";
 
 /**
@@ -19,6 +19,9 @@ type Props = {
   canRenameRoom?: boolean;
   onRenameRoom?: (name: string) => void;
   onBack?: () => void;
+  onLoadOlderMessages?: () => void;
+  hasMoreMessages?: boolean;
+  isLoadingOlderMessages?: boolean;
 };
 
 export default function ChatRoom({
@@ -33,6 +36,9 @@ export default function ChatRoom({
   canRenameRoom = false,
   onRenameRoom,
   onBack,
+  onLoadOlderMessages,
+  hasMoreMessages = false,
+  isLoadingOlderMessages = false,
 }: Props) {
   const [input, setInput] = useState("");
   const [showMembers, setShowMembers] = useState(true);
@@ -40,10 +46,30 @@ export default function ChatRoom({
   const [showInviteInput, setShowInviteInput] = useState(false);
   const [isEditingRoomName, setIsEditingRoomName] = useState(false);
   const [roomNameInput, setRoomNameInput] = useState(roomTitle);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const shouldRestoreScrollRef = useRef(false);
+  const prevScrollHeightRef = useRef(0);
+  const prevMessageCountRef = useRef(messages.length);
 
   useEffect(() => {
     setRoomNameInput(roomTitle);
   }, [roomTitle]);
+
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    if (shouldRestoreScrollRef.current) {
+      const heightDiff = container.scrollHeight - prevScrollHeightRef.current;
+      container.scrollTop = heightDiff;
+      shouldRestoreScrollRef.current = false;
+    } else if (messages.length > prevMessageCountRef.current) {
+      // 新訊息新增時，預設捲到最底部。
+      container.scrollTop = container.scrollHeight;
+    }
+
+    prevMessageCountRef.current = messages.length;
+  }, [messages]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,13 +154,15 @@ export default function ChatRoom({
           )}
         </div>
         {/* 成員名單切換按鈕，讓畫面不會一直被側欄佔滿。 */}
-        <button
-          type="button"
-          className="btn btn-sm btn-outline-secondary"
-          onClick={() => setShowMembers((prev) => !prev)}
-        >
-          {showMembers ? "Hide Members" : `Members (${members.length})`}
-        </button>
+        {chatType !== "direct" && (
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-secondary"
+            onClick={() => setShowMembers((prev) => !prev)}
+          >
+            {showMembers ? "Hide Members" : `Members (${members.length})`}
+          </button>
+        )}
       </div>
 
       {/* ===== Message area + Members panel ===== */}
@@ -146,6 +174,19 @@ export default function ChatRoom({
         }}
       >
         <div
+          ref={messagesContainerRef}
+          onScroll={(e) => {
+            if (!onLoadOlderMessages || !hasMoreMessages || isLoadingOlderMessages) {
+              return;
+            }
+
+            const target = e.currentTarget;
+            if (target.scrollTop > 24) return;
+
+            prevScrollHeightRef.current = target.scrollHeight;
+            shouldRestoreScrollRef.current = true;
+            onLoadOlderMessages();
+          }}
           style={{
             flex: 1,
             overflowY: "auto",
@@ -153,6 +194,12 @@ export default function ChatRoom({
             backgroundColor: "#fafafa",
           }}
         >
+          {isLoadingOlderMessages && (
+            <div style={{ textAlign: "center", color: "#777", marginBottom: "8px" }}>
+              Loading older messages...
+            </div>
+          )}
+
           {messages.length === 0 && (
             <div
               style={{
@@ -234,7 +281,7 @@ export default function ChatRoom({
           })}
         </div>
 
-        {showMembers && (
+        {chatType !== "direct" && showMembers && (
           <aside
             style={{
               width: "220px",

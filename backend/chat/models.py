@@ -10,6 +10,20 @@ from django.contrib.auth import get_user_model
 User = get_user_model()
 
 
+def generate_unique_uri():
+    """
+    Generates a short unique identifier for a chat session.
+    """
+    return str(uuid4()).replace("-", "")[:15]
+
+
+def generate_direct_pair_key(user_a_id: int, user_b_id: int) -> str:
+    """
+    Make a stable key for 1:1 rooms so A-B and B-A map to the same value.
+    """
+    low, high = sorted([user_a_id, user_b_id])
+    return f"{low}:{high}"
+
 class TrackableDateModel(models.Model):
     """
     Abstract model to track creation / update timestamps.
@@ -22,25 +36,10 @@ class TrackableDateModel(models.Model):
         abstract = True
 
 
-def generate_unique_uri():
-    """
-    Generates a short unique identifier for a chat session.
-    """
-    return str(uuid4()).replace("-", "")[:15]
-
 
 class ChatSessionType(models.TextChoices):
     GROUP = "group", "Group"
     DIRECT = "direct", "Direct"
-
-
-def generate_direct_pair_key(user_a_id: int, user_b_id: int) -> str:
-    """
-    Make a stable key for 1:1 rooms so A-B and B-A map to the same value.
-    """
-    low, high = sorted([user_a_id, user_b_id])
-    return f"{low}:{high}"
-
 
 
 class ChatSession(TrackableDateModel):
@@ -48,8 +47,7 @@ class ChatSession(TrackableDateModel):
     A chat session (chat room / conversation).
     """
 
-
-    owner = models.ForeignKey(
+    owner = models.ForeignKey( 
         User,
         on_delete=models.PROTECT,
         related_name="owned_chat_sessions",
@@ -65,7 +63,7 @@ class ChatSession(TrackableDateModel):
         blank=True,
     )
     chat_type = models.CharField(
-        max_length=16,
+        max_length=10,
         choices=ChatSessionType.choices,
         default=ChatSessionType.GROUP,
     )
@@ -83,12 +81,12 @@ class ChatSession(TrackableDateModel):
 
 class ChatSessionMember(TrackableDateModel):
     """
-    儲存聊天室成員資訊，含聊天室內的所有使用者
+    Store chatroom membership information, including both group and direct chat sessions.
     """
 
     chat_session = models.ForeignKey(
         ChatSession,
-        related_name="members",
+        related_name="members", 
         on_delete=models.PROTECT,
     )
     user = models.ForeignKey(
@@ -98,7 +96,7 @@ class ChatSessionMember(TrackableDateModel):
     )
 
     class Meta:
-        unique_together = ("chat_session", "user") #防止同一使用者重複加入同一聊天室
+        unique_together = ("chat_session", "user") # prevent duplicate memberships
 
     def __str__(self):
         return f"{self.user_id} in {self.chat_session_id}"
@@ -120,6 +118,14 @@ class ChatSessionMessage(TrackableDateModel):
         on_delete=models.PROTECT,
     )
     message = models.TextField(max_length=2000)
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=["chat_session", "create_date"],
+                name="idx_msg_room_created_at",
+            ),
+        ]
 
     def __str__(self):
         return f"Message({self.user_id} → {self.chat_session_id})"

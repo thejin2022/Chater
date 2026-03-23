@@ -24,6 +24,12 @@ export type ChatMessage = {
   create_date?: string;
 };
 
+export type ChatMessagePage = {
+  results: ChatMessage[];
+  has_more: boolean;
+  next_before?: string | null;
+};
+
 /**
  * ChatMember
  * -------------------------
@@ -45,6 +51,7 @@ export type ChatRoomRelation = {
   id: number;
   uri: string;
   name?: string | null;
+  display_name?: string;
   chat_type?: "group" | "direct";
   owner?: {
     id: number;

@@ -52,6 +52,7 @@ function sortMessages(list: ChatMessage[]): ChatMessage[] {
 
 function getRoomDisplayName(room?: ChatRoomRelation): string {
   if (!room) return "Chat Room";
+  if (room.display_name?.trim()) return room.display_name;
   return room.name?.trim() ? room.name : room.uri;
 }
 
@@ -64,6 +65,9 @@ export default function Chat() {
      ========================= */
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [members, setMembers] = useState<ChatMember[]>([]);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [nextBefore, setNextBefore] = useState<string | null>(null);
+  const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false);
   const [invitations, setInvitations] = useState<ChatInvitation[]>([]);
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [currentUsername, setCurrentUsername] =
@@ -167,11 +171,33 @@ export default function Chat() {
     if (!uri) return;
 
     try {
-      const data = await fetchChatMessages(uri);
-      const normalized = data.map(normalizeMessage);
+      const page = await fetchChatMessages(uri, { limit: 50 });
+      const normalized = page.results.map(normalizeMessage);
       setMessages(sortMessages(normalized));
+      setHasMoreMessages(page.has_more);
+      setNextBefore(page.next_before ?? null);
     } catch {
       alert("Load messages failed");
+    }
+  };
+
+  const loadOlderMessages = async () => {
+    if (!uri || !hasMoreMessages || isLoadingOlderMessages) return;
+
+    try {
+      setIsLoadingOlderMessages(true);
+      const page = await fetchChatMessages(uri, {
+        before: nextBefore ?? undefined,
+        limit: 50,
+      });
+      const normalized = page.results.map(normalizeMessage);
+      setMessages((prev) => sortMessages([...normalized, ...prev]));
+      setHasMoreMessages(page.has_more);
+      setNextBefore(page.next_before ?? null);
+    } catch {
+      alert("Load older messages failed");
+    } finally {
+      setIsLoadingOlderMessages(false);
     }
   };
 
@@ -416,6 +442,9 @@ const handleSendMessage = (text: string) => {
             }
             onRenameRoom={handleRenameRoom}
             onBack={() => navigate("/chats")}
+            onLoadOlderMessages={loadOlderMessages}
+            hasMoreMessages={hasMoreMessages}
+            isLoadingOlderMessages={isLoadingOlderMessages}
           />
         ) : (
           <StartChat

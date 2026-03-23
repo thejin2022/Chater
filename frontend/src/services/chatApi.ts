@@ -2,7 +2,7 @@ import { authorizedRequest } from "./httpClient";
 import type {
   ChatInvitation,
   ChatMember,
-  ChatMessage,
+  ChatMessagePage,
   ChatRoomRelation,
 } from "../types/chat";
 
@@ -93,10 +93,20 @@ export async function createDirectChatSession(username: string) {
  * 載入聊天室歷史訊息
  */
 export async function fetchChatMessages(
-  uri: string
-): Promise<ChatMessage[]> {
+  uri: string,
+  params?: { before?: string; limit?: number }
+): Promise<ChatMessagePage> {
+  const query = new URLSearchParams();
+  if (params?.before) {
+    query.set("before", params.before);
+  }
+  if (params?.limit) {
+    query.set("limit", String(params.limit));
+  }
+  const queryString = query.toString();
+
   const response = await authorizedRequest(
-    `/chat/chatrooms/${uri}/messages/` // ✅
+    `/chat/chatrooms/${uri}/messages/${queryString ? `?${queryString}` : ""}`
   );
 
   if (!response.ok) {

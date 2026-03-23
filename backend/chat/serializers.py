@@ -33,6 +33,22 @@ class ChatSessionSerializer(serializers.ModelSerializer):
     """
 
     owner = UserSerializer(read_only=True)
+    display_name = serializers.SerializerMethodField()
+
+    def get_display_name(self, obj: ChatSession) -> str:
+        if obj.chat_type != "direct":
+            return obj.name or obj.uri
+
+        request = self.context.get("request")
+        request_user = getattr(request, "user", None)
+        if request_user is None or not request_user.is_authenticated:
+            return obj.uri
+
+        for member in obj.members.all():
+            if member.user_id != request_user.id:
+                return member.user.username
+
+        return obj.uri
 
     class Meta:
         model = ChatSession
@@ -40,6 +56,7 @@ class ChatSessionSerializer(serializers.ModelSerializer):
             "id",
             "uri",
             "name",
+            "display_name",
             "chat_type",
             "owner",
             "create_date",

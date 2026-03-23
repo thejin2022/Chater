@@ -27,8 +27,15 @@ export default function StartChat({
 }: Props) {
   const hasChatRooms = chatRooms.length > 0;
   const [targetUsername, setTargetUsername] = useState("");
+  const [roomFilter, setRoomFilter] = useState<"all" | "direct" | "group">("all");
   const getRoomLabel = (room: ChatRoomRelation) =>
-    room.name?.trim() ? room.name : room.uri;
+    room.display_name?.trim() ||
+    room.name?.trim() ||
+    room.uri;
+  const filteredRooms = chatRooms.filter((room) => {
+    if (roomFilter === "all") return true;
+    return room.chat_type === roomFilter;
+  });
 
   return (
     <div className="card p-4 text-center">
@@ -78,25 +85,73 @@ export default function StartChat({
 
       {/* ⭐ 有聊天室資料時，才顯示下方區塊 */}
       {hasChatRooms && onEnterRoom && (
-        <div className="mt-4">
+        <div className="mt-4 text-start">
           <hr />
 
-          <h5 className="mb-3">
-            Your chat rooms
-          </h5>
+          <h5 className="mb-3">Chats</h5>
+          <div className="d-flex gap-2 mb-3">
+            <button
+              className={`btn btn-sm ${roomFilter === "all" ? "btn-dark" : "btn-outline-dark"}`}
+              onClick={() => setRoomFilter("all")}
+            >
+              All ({chatRooms.length})
+            </button>
+            <button
+              className={`btn btn-sm ${roomFilter === "direct" ? "btn-dark" : "btn-outline-dark"}`}
+              onClick={() => setRoomFilter("direct")}
+            >
+              Direct ({chatRooms.filter((room) => room.chat_type === "direct").length})
+            </button>
+            <button
+              className={`btn btn-sm ${roomFilter === "group" ? "btn-dark" : "btn-outline-dark"}`}
+              onClick={() => setRoomFilter("group")}
+            >
+              Group ({chatRooms.filter((room) => room.chat_type === "group").length})
+            </button>
+          </div>
 
-          <div className="d-flex flex-column gap-2">
-            {chatRooms.map((room) => (
-              <button
+          <div
+            className="d-flex flex-column gap-2"
+            style={{ maxHeight: "320px", overflowY: "auto", paddingRight: "4px" }}
+          >
+            {filteredRooms.map((room) => (
+              <div
                 key={room.uri}
-                className="btn btn-outline-secondary"
-                onClick={() =>
-                  onEnterRoom(room.uri)
-                }
+                className="border rounded p-2 d-flex justify-content-between align-items-center"
+                style={{ backgroundColor: "#fbfbfb" }}
               >
-                Enter {room.chat_type === "direct" ? "DM" : "chat"} {getRoomLabel(room)}
-              </button>
+                <div className="d-flex align-items-center gap-2">
+                  <div
+                    style={{
+                      width: "34px",
+                      height: "34px",
+                      borderRadius: "50%",
+                      backgroundColor: room.chat_type === "direct" ? "#d9f1ff" : "#e8ffe2",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      color: "#333",
+                    }}
+                  >
+                    {room.chat_type === "direct" ? "DM" : "GR"}
+                  </div>
+                  <div style={{ fontWeight: 600 }}>{getRoomLabel(room)}</div>
+                </div>
+                <button
+                  className="btn btn-sm btn-outline-primary"
+                  onClick={() => onEnterRoom(room.uri)}
+                >
+                  Open
+                </button>
+              </div>
             ))}
+            {filteredRooms.length === 0 && (
+              <div className="text-muted" style={{ fontSize: "14px" }}>
+                No chat rooms in this category.
+              </div>
+            )}
           </div>
         </div>
       )}

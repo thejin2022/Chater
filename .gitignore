@@ -22,3 +22,6 @@ build/
 
 # logs
 *.log
+
+# sql test
+*.sql
