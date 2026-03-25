@@ -94,7 +94,7 @@ export async function createDirectChatSession(username: string) {
  */
 export async function fetchChatMessages(
   uri: string,
-  params?: { before?: string; limit?: number }
+  params?: { before?: string; limit?: number; keyword?: string }
 ): Promise<ChatMessagePage> {
   const query = new URLSearchParams();
   if (params?.before) {
@@ -102,6 +102,9 @@ export async function fetchChatMessages(
   }
   if (params?.limit) {
     query.set("limit", String(params.limit));
+  }
+  if (params?.keyword?.trim()) {
+    query.set("keyword", params.keyword.trim());
   }
   const queryString = query.toString();
 

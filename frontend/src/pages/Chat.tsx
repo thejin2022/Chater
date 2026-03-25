@@ -72,6 +72,8 @@ export default function Chat() {
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [currentUsername, setCurrentUsername] =
     useState<string | null>(null);
+  const [searchKeywordInput, setSearchKeywordInput] = useState("");
+  const [appliedSearchKeyword, setAppliedSearchKeyword] = useState("");
   const socketRef = useRef<WebSocket | null>(null);
   const notificationSocketRef = useRef<WebSocket | null>(null);
 
@@ -171,7 +173,10 @@ export default function Chat() {
     if (!uri) return;
 
     try {
-      const page = await fetchChatMessages(uri, { limit: 50 });
+      const page = await fetchChatMessages(uri, {
+        limit: 50,
+        keyword: appliedSearchKeyword || undefined,
+      });
       const normalized = page.results.map(normalizeMessage);
       setMessages(sortMessages(normalized));
       setHasMoreMessages(page.has_more);
@@ -189,6 +194,7 @@ export default function Chat() {
       const page = await fetchChatMessages(uri, {
         before: nextBefore ?? undefined,
         limit: 50,
+        keyword: appliedSearchKeyword || undefined,
       });
       const normalized = page.results.map(normalizeMessage);
       setMessages((prev) => sortMessages([...normalized, ...prev]));
@@ -216,7 +222,7 @@ export default function Chat() {
   useEffect(() => {
     if (!uri) return;
     loadMessages();
-  }, [uri]);
+  }, [uri, appliedSearchKeyword]);
 
   useEffect(() => {
     if (!uri) {
@@ -364,6 +370,20 @@ const handleSendMessage = (text: string) => {
     }
   };
 
+  const handleApplyKeywordSearch = () => {
+    setAppliedSearchKeyword(searchKeywordInput.trim());
+  };
+
+  const handleClearKeywordSearch = () => {
+    setSearchKeywordInput("");
+    setAppliedSearchKeyword("");
+  };
+
+  useEffect(() => {
+    setSearchKeywordInput("");
+    setAppliedSearchKeyword("");
+  }, [uri]);
+
   const activeRoom = uri
     ? chatRooms.find((room) => room.uri === uri)
     : undefined;
@@ -445,6 +465,11 @@ const handleSendMessage = (text: string) => {
             onLoadOlderMessages={loadOlderMessages}
             hasMoreMessages={hasMoreMessages}
             isLoadingOlderMessages={isLoadingOlderMessages}
+            searchKeyword={searchKeywordInput}
+            onSearchKeywordChange={setSearchKeywordInput}
+            onSearch={handleApplyKeywordSearch}
+            onClearSearch={handleClearKeywordSearch}
+            isSearchActive={Boolean(appliedSearchKeyword)}
           />
         ) : (
           <StartChat

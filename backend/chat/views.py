@@ -231,6 +231,10 @@ class ChatSessionMessageView(APIView):
 
         messages_qs = chat_session.messages.order_by("-create_date", "-id")
 
+        keyword = request.query_params.get("keyword", "").strip()
+        if keyword:
+            messages_qs = messages_qs.filter(message__icontains=keyword)
+
         before = request.query_params.get("before")
         if before:
             before_dt = parse_datetime(before)

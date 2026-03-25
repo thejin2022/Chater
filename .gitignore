@@ -27,3 +27,5 @@ build/
 *.sql
 
 backend/chat/management/
+backend/staticfiles/
+frontend/dist/

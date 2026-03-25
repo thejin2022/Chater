@@ -22,6 +22,11 @@ type Props = {
   onLoadOlderMessages?: () => void;
   hasMoreMessages?: boolean;
   isLoadingOlderMessages?: boolean;
+  searchKeyword: string;
+  onSearchKeywordChange: (keyword: string) => void;
+  onSearch: () => void;
+  onClearSearch: () => void;
+  isSearchActive?: boolean;
 };
 
 export default function ChatRoom({
@@ -39,6 +44,11 @@ export default function ChatRoom({
   onLoadOlderMessages,
   hasMoreMessages = false,
   isLoadingOlderMessages = false,
+  searchKeyword,
+  onSearchKeywordChange,
+  onSearch,
+  onClearSearch,
+  isSearchActive = false,
 }: Props) {
   const [input, setInput] = useState("");
   const [showMembers, setShowMembers] = useState(true);
@@ -164,6 +174,58 @@ export default function ChatRoom({
           </button>
         )}
       </div>
+
+      <div
+        style={{
+          padding: "8px 12px",
+          borderBottom: "1px solid #ddd",
+          backgroundColor: "#fff",
+          display: "flex",
+          gap: "8px",
+        }}
+      >
+        <input
+          type="text"
+          className="form-control form-control-sm"
+          placeholder="Search keyword in this chat"
+          value={searchKeyword}
+          onChange={(e) => onSearchKeywordChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onSearch();
+            }
+          }}
+        />
+        <button
+          type="button"
+          className="btn btn-sm btn-outline-primary"
+          onClick={onSearch}
+        >
+          Search
+        </button>
+        <button
+          type="button"
+          className="btn btn-sm btn-outline-secondary"
+          onClick={onClearSearch}
+          disabled={!isSearchActive}
+        >
+          Clear
+        </button>
+      </div>
+      {isSearchActive && (
+        <div
+          style={{
+            padding: "4px 12px",
+            fontSize: "12px",
+            color: "#555",
+            borderBottom: "1px solid #eee",
+            backgroundColor: "#fff",
+          }}
+        >
+          Filtering messages by keyword: "{searchKeyword.trim()}"
+        </div>
+      )}
 
       {/* ===== Message area + Members panel ===== */}
       <div
