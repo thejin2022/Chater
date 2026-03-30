@@ -1,5 +1,5 @@
 # Chater
-A realtime chat system built with Django / Django REST Framework / Channels.
+A Real-time chat system built with Django REST Framework.
 
 ## Getting Started
 Make sure you have Docker and Docker Compose installed.
