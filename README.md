@@ -7,7 +7,7 @@ Make sure you have Docker and Docker Compose installed.
 Clone the repository:
 
 ```bash
-git clone https://github.com/thejin2022/Chater.git
+git clone https://github.com/thejin2022/Chater
 cd Chater
 ```
 
