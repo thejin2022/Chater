@@ -15,7 +15,7 @@ class ChatSessionMessageConsumer(AsyncWebsocketConsumer):
  
 
     async def connect(self):
-        # print("Worker PID:", os.getpid())
+        
         self.chat_uri = self.scope["url_route"]["kwargs"]["uri"]
 
         # JwtAuthMiddleware 已經把 scope["user"] 設好了
@@ -24,7 +24,7 @@ class ChatSessionMessageConsumer(AsyncWebsocketConsumer):
         # 新增：每個聊天室對應一個 group 名稱
         self.room_group_name = f"chat_{self.chat_uri}"
 
-        #驗證建立連線者是否符合身份
+        
 
         if not self.user or not self.user.is_authenticated:
             await self.close(code=4401)
@@ -76,8 +76,7 @@ class ChatSessionMessageConsumer(AsyncWebsocketConsumer):
             }))
             return
 
-        # 原本是 self.send() 只回給自己
-        # 現在改成 group_send() 廣播給聊天室所有人
+      
         await self.channel_layer.group_send(
             self.room_group_name,
             {

@@ -5,6 +5,7 @@ Django settings for chater project.
 import os
 from datetime import timedelta
 from pathlib import Path
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -22,20 +23,24 @@ def env_list(name: str, default: str = "") -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
+def env_required(name: str) -> str:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        raise ImproperlyConfigured(f"Missing required environment variable: {name}")
+    return value
+
+
 # Quick-start defaults for local development.
 # Production should always override via environment variables.
 
-SECRET_KEY = os.getenv(
-    "DJANGO_SECRET_KEY",
-    "unsafe-dev-secret-key-change-me",
-)
+SECRET_KEY = env_required("DJANGO_SECRET_KEY")
 
 DEBUG = env_bool("DJANGO_DEBUG", True)
+ENABLE_CORS = env_bool("ENABLE_CORS", DEBUG)
 
-ALLOWED_HOSTS = env_list(
-    "DJANGO_ALLOWED_HOSTS",
-    "localhost,127.0.0.1",
-)
+ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS")
+if not ALLOWED_HOSTS:
+    raise ImproperlyConfigured("DJANGO_ALLOWED_HOSTS must not be empty")
 
 
 # Application definition
@@ -51,13 +56,11 @@ INSTALLED_APPS = [
     'accounts', 
     'chat',
     'channels',
-    'corsheaders',
-
 ]
+if ENABLE_CORS:
+    INSTALLED_APPS.append("corsheaders")
 
 MIDDLEWARE = [
-
-    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -66,6 +69,8 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+if ENABLE_CORS:
+    MIDDLEWARE.insert(0, "corsheaders.middleware.CorsMiddleware")
 
 ROOT_URLCONF = 'chater.urls'
 
@@ -91,12 +96,12 @@ ASGI_APPLICATION = "chater.asgi.application"
 
 DATABASES = {
     'default': {
-        'ENGINE': os.getenv('DB_ENGINE', 'django.db.backends.postgresql'),
-        'NAME': os.getenv('DB_NAME', 'chater_db'),
-        'USER': os.getenv('DB_USER', 'jin'),
+        'ENGINE': env_required('DB_ENGINE'),
+        'NAME': env_required('DB_NAME'),
+        'USER': env_required('DB_USER'),
         'PASSWORD': os.getenv('DB_PASSWORD', ''),
-        'HOST': os.getenv('DB_HOST', 'localhost'),
-        'PORT': os.getenv('DB_PORT', '5432'),
+        'HOST': env_required('DB_HOST'),
+        'PORT': env_required('DB_PORT'),
     }
 }
 
@@ -147,41 +152,24 @@ REST_FRAMEWORK = {
 }
 
 
-# ===== CORS/CSRF settings =====
-CORS_ALLOW_ALL_ORIGINS = env_bool("CORS_ALLOW_ALL_ORIGINS", False)
-CORS_ALLOWED_ORIGINS = env_list(
-    "CORS_ALLOWED_ORIGINS",
-    "http://localhost:5173",
-)
 CSRF_TRUSTED_ORIGINS = env_list(
     "CSRF_TRUSTED_ORIGINS",
-    "http://localhost:5173",
+    "",
 )
 
 # Keep cookie settings environment-driven for local/prod parity.
-CORS_ALLOW_CREDENTIALS = env_bool("CORS_ALLOW_CREDENTIALS", True)
 CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE", False)
 CSRF_COOKIE_SAMESITE = os.getenv("CSRF_COOKIE_SAMESITE", "Lax")
 SESSION_COOKIE_SECURE = env_bool("SESSION_COOKIE_SECURE", False)
 SESSION_COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")
 
-CORS_ALLOW_METHODS = [
-    "DELETE",
-    "GET",
-    "OPTIONS",
-    "PATCH",
-    "POST",
-    "PUT",
-]
-
-CORS_ALLOW_HEADERS = [
-    "accept",
-    "authorization",
-    "content-type",
-    "user-agent",
-    "x-csrftoken",
-    "x-requested-with",
-]
+if ENABLE_CORS:
+    CORS_ALLOW_ALL_ORIGINS = env_bool("CORS_ALLOW_ALL_ORIGINS", False)
+    CORS_ALLOWED_ORIGINS = env_list(
+        "CORS_ALLOWED_ORIGINS",
+        "",
+    )
+    CORS_ALLOW_CREDENTIALS = env_bool("CORS_ALLOW_CREDENTIALS", True)
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(
@@ -214,7 +202,7 @@ CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")],
+            "hosts": [env_required("REDIS_URL")],
         },
     },
 }

@@ -1,4 +1,3 @@
-print(">>> WS JwtAuthMiddleware module loaded <<<")
 # asgi.py 會呼叫此 module的 JwtAuthMiddleware，為 WebSocket 連線驗證 JWT token，並設定 scope["user"]。
 from typing import Callable
 
