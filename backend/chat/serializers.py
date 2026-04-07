@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from .models import (
+    ChatInvitationStatus,
     ChatSession,
     ChatSessionMember,
     ChatSessionMessage,
@@ -21,9 +22,6 @@ class UserSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "username",
-            "email",
-            "first_name",
-            "last_name",
         )
 
 
@@ -47,6 +45,26 @@ class ChatSessionSerializer(serializers.ModelSerializer):
         for member in obj.members.all():
             if member.user_id != request_user.id:
                 return member.user.username
+
+        # Direct room may temporarily have only one member before invitation acceptance.
+        # In that case, resolve display name from pending invitation counterpart.
+        pending_invitation = (
+            obj.invitations.filter(status=ChatInvitationStatus.PENDING)
+            .filter(inviter_id=request_user.id)
+            .select_related("invitee")
+            .first()
+        )
+        if pending_invitation:
+            return pending_invitation.invitee.username
+
+        pending_invitation = (
+            obj.invitations.filter(status=ChatInvitationStatus.PENDING)
+            .filter(invitee_id=request_user.id)
+            .select_related("inviter")
+            .first()
+        )
+        if pending_invitation:
+            return pending_invitation.inviter.username
 
         return obj.uri
 
@@ -98,7 +116,22 @@ class ChatSessionMessageSerializer(serializers.ModelSerializer):
 
 class ChatInvitationSerializer(serializers.ModelSerializer):
     inviter = UserSerializer(read_only=True)
-    chat_session = ChatSessionSerializer(read_only=True)
+    chat_session = serializers.SerializerMethodField()
+
+    def get_chat_session(self, obj: ChatInvitation) -> dict:
+        chat_session = obj.chat_session
+        if chat_session.chat_type == "direct":
+            display_name = obj.inviter.username
+        else:
+            display_name = chat_session.name or chat_session.uri
+
+        return {
+            "id": chat_session.id,
+            "uri": chat_session.uri,
+            "name": chat_session.name,
+            "display_name": display_name,
+            "chat_type": chat_session.chat_type,
+        }
 
     class Meta:
         model = ChatInvitation

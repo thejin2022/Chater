@@ -1,12 +1,14 @@
 import json
-import os
-
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
-from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
 
-from .models import ChatSession, ChatSessionMessage
+from .models import ChatSession
+from .services import (
+    ChatSessionAccessError,
+    create_chat_message,
+    get_chat_session_for_member,
+)
 
 User = get_user_model()
 
@@ -15,13 +17,23 @@ class ChatSessionMessageConsumer(AsyncWebsocketConsumer):
  
 
     async def connect(self):
-        
+        print(
+            "chat socket scope:",
+            {
+                "keys": list(self.scope.keys()),
+                "path": self.scope.get("path"),
+                "url_kwargs": self.scope.get("url_route", {}).get("kwargs", {}),
+                "user": getattr(self.scope.get("user"), "username", None),
+            },
+            flush=True,
+        )
+
         self.chat_uri = self.scope["url_route"]["kwargs"]["uri"]
 
-        # JwtAuthMiddleware 已經把 scope["user"] 設好了
+        # JwtAuthMiddleware already populated scope["user"].
         self.user = self.scope["user"]
 
-        # 新增：每個聊天室對應一個 group 名稱
+        # Each chat room maps to one channel layer group.
         self.room_group_name = f"chat_{self.chat_uri}"
 
         
@@ -35,7 +47,7 @@ class ChatSessionMessageConsumer(AsyncWebsocketConsumer):
             await self.close(code=4403)
             return
 
-        # 新增：將目前 websocket 連線加入 group
+        # Add the current websocket connection to the room group.
         await self.channel_layer.group_add(
             self.room_group_name,
             self.channel_name
@@ -43,12 +55,8 @@ class ChatSessionMessageConsumer(AsyncWebsocketConsumer):
 
         await self.accept()
 
-        print("WS connected, user =", self.user)
-
 
     async def receive(self, text_data=None, bytes_data=None):
-        print("Message handled by PID:", os.getpid())
-
         if not text_data:
             return
 
@@ -60,11 +68,19 @@ class ChatSessionMessageConsumer(AsyncWebsocketConsumer):
             }))
             return
 
+        event_type = data.get("type")
+        if event_type != "send_message":
+            await self.send(json.dumps({
+                "type": "error",
+                "error": "Unsupported event type"
+            }))
+            return
+
         message_text = data.get("message")
         if not message_text:
             await self.send(json.dumps({
+                "type": "error",
                 "error": "message is required"
-                
             }))
             return
 
@@ -72,6 +88,7 @@ class ChatSessionMessageConsumer(AsyncWebsocketConsumer):
             message = await self._create_message(message_text)
         except PermissionError as e:
             await self.send(json.dumps({
+                "type": "error",
                 "error": str(e)
             }))
             return
@@ -80,7 +97,7 @@ class ChatSessionMessageConsumer(AsyncWebsocketConsumer):
         await self.channel_layer.group_send(
             self.room_group_name,
             {
-                "type": "chat_message",  # 對應下面的 method 名稱
+                "type": "chat_message",  # Matches the handler method name below.
                 "id": message.id,
                 "username": self.user.username,
                 "message": message.message,
@@ -89,12 +106,13 @@ class ChatSessionMessageConsumer(AsyncWebsocketConsumer):
         )
 
 
-    # group_send 觸發後會呼叫這個 method
+    # This method is called after group_send dispatches the event.
     async def chat_message(self, event):
         await self.send(json.dumps({
+            "type": "chat_message",
             "id": event["id"],
             "user": {
-                "username": event["username"],  # 回應成前端需要的格式
+                "username": event["username"],  # Match the response shape expected by the frontend.
             },
             "message": event["message"],
             "create_date": event["create_date"],
@@ -108,9 +126,7 @@ class ChatSessionMessageConsumer(AsyncWebsocketConsumer):
 
 
     async def disconnect(self, close_code):
-        print("WS disconnected", close_code)
-
-        # 離線時從 group 移除
+        # Remove the socket from the group on disconnect.
         await self.channel_layer.group_discard(
             self.room_group_name,
             self.channel_name
@@ -119,29 +135,31 @@ class ChatSessionMessageConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def _is_member(self):
-        return ChatSession.objects.filter(
-            uri=self.chat_uri,
-            members__user=self.user,
-        ).exists()
+        try:
+            get_chat_session_for_member(uri=self.chat_uri, user=self.user)
+        except (ChatSession.DoesNotExist, ChatSessionAccessError):
+            return False
+        return True
 
 
-    # 同步 ORM 轉換成非同步
+    # Wrap synchronous ORM work for async usage.
     @database_sync_to_async
     def _create_message(self, message_text):
-        # 尚未登入
+        # Not authenticated.
         if not self.user or not self.user.is_authenticated:
             raise PermissionError("Authentication required.")
 
-        chat_session = get_object_or_404(ChatSession, uri=self.chat_uri)
+        try:
+            chat_session = get_chat_session_for_member(uri=self.chat_uri, user=self.user)
+        except ChatSession.DoesNotExist as exc:
+            raise PermissionError("Chat session not found.") from exc
+        except ChatSessionAccessError as exc:
+            raise PermissionError(str(exc)) from exc
 
-        
-        if not chat_session.members.filter(user=self.user).exists():
-            raise PermissionError("You are not a member of this chat session.")
-
-        return ChatSessionMessage.objects.create(
+        return create_chat_message(
             chat_session=chat_session,
             user=self.user,
-            message=message_text,
+            message_text=message_text,
         )
 
 
@@ -152,6 +170,16 @@ class NotificationConsumer(AsyncWebsocketConsumer):
     """
 
     async def connect(self):
+        print(
+            "notification socket scope:",
+            {
+                "keys": list(self.scope.keys()),
+                "path": self.scope.get("path"),
+                "user": getattr(self.scope.get("user"), "username", None),
+            },
+            flush=True,
+        )
+
         self.user = self.scope["user"]
         if not self.user or not self.user.is_authenticated:
             await self.close(code=4401)

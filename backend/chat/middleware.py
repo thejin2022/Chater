@@ -1,4 +1,5 @@
-# asgi.py 會呼叫此 module的 JwtAuthMiddleware，為 WebSocket 連線驗證 JWT token，並設定 scope["user"]。
+# asgi.py calls JwtAuthMiddleware from this module to validate JWT for
+# WebSocket connections and set scope["user"].
 from typing import Callable
 
 from django.contrib.auth.models import AnonymousUser
@@ -16,13 +17,13 @@ User = get_user_model()
 
 class JwtAuthMiddleware:
     """
-    供 WebSocket Channels 用的 JWT Auth Middleware
+    JWT auth middleware for Django Channels WebSocket connections.
 
-    功能：
-    - 從 WebSocket 的 cookie 取出 access_token
-    - 使用 SimpleJWT 驗證
-    - 解析出對應的 Django User
-    - 設定 scope["user"] 防止 UserLazyObject
+    Responsibilities:
+    - Read access_token from the WebSocket cookies
+    - Validate it with SimpleJWT
+    - Resolve the corresponding Django user
+    - Set scope["user"] to avoid UserLazyObject issues
     """
 
     def __init__(self, inner: Callable):
@@ -31,10 +32,8 @@ class JwtAuthMiddleware:
 
     async def __call__(self, scope, receive, send):
         scope["user"] = AnonymousUser()
-        #print(">>> JwtAuthMiddleware __call__ <<<")
-        #print("WS cookies =", scope.get("cookies"))
         cookies = scope.get("cookies", {})
-        access_token = cookies.get("access_token")
+        access_token = cookies.get(settings.SIMPLE_JWT["AUTH_COOKIE"])
 
         if access_token:
             try:
@@ -42,7 +41,7 @@ class JwtAuthMiddleware:
                 user = await self._get_user(validated_token)
                 scope["user"] = user
             except (InvalidToken, TokenError, User.DoesNotExist):
-                # token 無效或 user 不存在，保持 AnonymousUser
+                # If the token is invalid or the user does not exist, keep AnonymousUser.
                 pass
 
         return await self.inner(scope, receive, send)
@@ -50,8 +49,8 @@ class JwtAuthMiddleware:
     @database_sync_to_async
     def _get_user(self, validated_token):
         """
-        SimpleJWT validated token → Django User
-        解決以下錯誤：
+        Convert a validated SimpleJWT token into a Django user.
+        This avoids the following error:
         TypeError: Field 'id' expected a number but got
          <channels.auth.UserLazyObject object at 0x...>
         """
@@ -59,6 +58,6 @@ class JwtAuthMiddleware:
         return User.objects.get(pk=user_id)
 
 
-# 為了使用方便，提供一個 wrapper function（和 AuthMiddlewareStack 用法一致）
+# Provide a wrapper function for convenience, similar to AuthMiddlewareStack.
 def JwtAuthMiddlewareStack(inner):
     return JwtAuthMiddleware(inner)

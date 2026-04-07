@@ -17,8 +17,8 @@ from chat.middleware import JwtAuthMiddlewareStack
 
 application = ProtocolTypeRouter({
     "http": get_asgi_application(),
-    "websocket": CookieMiddleware(          # 把 WS 握手請求的 Cookie header 解析成 scope["cookies"]
-        JwtAuthMiddlewareStack(              # 再解析 JWT，設定 scope["user"]
+    "websocket": CookieMiddleware(          # Parse the WS handshake Cookie header into scope["cookies"].
+        JwtAuthMiddlewareStack(              # Then parse JWT and set scope["user"].
             URLRouter(chat.routing.websocket_urlpatterns)
         )
     ),

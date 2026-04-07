@@ -10,5 +10,5 @@ class RegisterSerializer(serializers.ModelSerializer):
         fields = ("username", "password")
 
     def create(self, validated_data):
-        # 用create_user  hash 密碼
+        # Use create_user so the password is hashed.
         return User.objects.create_user(**validated_data)

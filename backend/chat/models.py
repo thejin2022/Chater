@@ -78,6 +78,23 @@ class ChatSession(TrackableDateModel):
     def __str__(self):
         return f"ChatSession({self.uri})"
 
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                name="chk_group_name_required_direct_name_null",
+                check=(
+                    (
+                        models.Q(chat_type=ChatSessionType.GROUP)
+                        & models.Q(name__isnull=False)
+                    )
+                    | (
+                        models.Q(chat_type=ChatSessionType.DIRECT)
+                        & models.Q(name__isnull=True)
+                    )
+                ),
+            ),
+        ]
+
 
 class ChatSessionMember(TrackableDateModel):
     """

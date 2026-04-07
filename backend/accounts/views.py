@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.middleware.csrf import get_token
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -15,7 +16,7 @@ class RegisterView(APIView):
 
 
 
-# 取得使用者資訊
+
 class MeView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -30,8 +31,8 @@ class MeView(APIView):
 
 class CsrfTokenView(APIView):
     """
-    提供前端主動取得 CSRF cookie 的入口。
-    前端在送出 POST/PUT/PATCH/DELETE 前，可先呼叫此 API。
+    Endpoint for the frontend to proactively fetch a CSRF cookie.
+    The frontend can call this API before sending POST/PUT/PATCH/DELETE requests.
     """
     authentication_classes = []
     permission_classes = []
@@ -47,67 +48,79 @@ class CsrfTokenView(APIView):
 
 
 
-# 打包 token 成 HttpOnly Cookie
+# Store tokens in HttpOnly cookies.
 from rest_framework_simplejwt.views import TokenObtainPairView
+
+
+def _cookie_settings(max_age: int) -> dict:
+    return {
+        "httponly": settings.SIMPLE_JWT["AUTH_COOKIE_HTTP_ONLY"],
+        "secure": settings.SIMPLE_JWT["AUTH_COOKIE_SECURE"],
+        "samesite": settings.SIMPLE_JWT["AUTH_COOKIE_SAMESITE"],
+        "path": settings.SIMPLE_JWT["AUTH_COOKIE_PATH"],
+        "max_age": max_age,
+    }
+
+
+def _set_auth_cookies(response: Response, access: str, refresh: str | None = None) -> None:
+    response.set_cookie(
+        key=settings.SIMPLE_JWT["AUTH_COOKIE"],
+        value=access,
+        **_cookie_settings(
+            int(settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds())
+        ),
+    )
+
+    if refresh:
+        response.set_cookie(
+            key=settings.SIMPLE_JWT["AUTH_COOKIE_REFRESH"],
+            value=refresh,
+            **_cookie_settings(
+                int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds())
+            ),
+        )
 
 class CookieTokenObtainPairView(TokenObtainPairView):
     """
-    登入成功後：
-    - 不回傳 access / refresh
-    - 改用 HttpOnly Cookie
+    After a successful login:
+    - Do not return access / refresh in the response body
+    - Use HttpOnly cookies instead
     """
 
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)
 
-        # 如果帳密錯誤，SimpleJWT 會回 401
+        # SimpleJWT returns 401 if the credentials are invalid.
         if response.status_code != status.HTTP_200_OK:
             return response
 
         access = response.data.get("access")
         refresh = response.data.get("refresh")
 
-        # 清空 body（前端拿不到 token）
+        # Clear the body so the frontend cannot read the tokens directly.
         response.data = {"detail": "login success"}
-
-        # 設定 HttpOnly Cookie
-        response.set_cookie(
-            key="access_token",
-            value=access,
-            httponly=True,
-            secure=False,      # 本地端 False，正式上線要設定成 True
-            samesite="Lax",
-            max_age=60 * 15,
-        )
-
-        response.set_cookie(
-            key="refresh_token",
-            value=refresh,
-            httponly=True,
-            secure=False,
-            samesite="Lax",
-            max_age=60 * 60 * 24 * 7,
-        )
+        _set_auth_cookies(response, access=access, refresh=refresh)
 
         return response
 
 
 
-# 處理 token 過期用 refresh token 持續更新 access token
+# Refresh the access token when it expires by using the refresh token.
 from rest_framework_simplejwt.views import TokenRefreshView
 
 
 class CookieTokenRefreshView(TokenRefreshView):
     """
-    從 HttpOnly cookie 讀 refresh token
-    再更新 access token
+    Read the refresh token from the HttpOnly cookie
+    and issue a new access token.
     """
 
     def post(self, request, *args, **kwargs):
-        # 把 cookie 裡的 refresh token 塞回 request.data
-        refresh = request.COOKIES.get("refresh_token")
+        # Put the refresh token from the cookie back into request.data.
+        refresh = request.COOKIES.get(settings.SIMPLE_JWT["AUTH_COOKIE_REFRESH"])
         if refresh:
-            request.data["refresh"] = refresh
+            request._full_data = request.data.copy()
+            request._full_data["refresh"] = refresh
 
         response = super().post(request, *args, **kwargs)
 
@@ -116,15 +129,7 @@ class CookieTokenRefreshView(TokenRefreshView):
 
         access = response.data.get("access")
         response.data = {"detail": "token refreshed"}
-
-        response.set_cookie(
-            key="access_token",
-            value=access,
-            httponly=True,
-            secure=False, # 這部分是因為本地需要，正式環境也得是 True
-            samesite="Lax", # 之後一定要改不能是 None , lax 是安全預設
-            max_age=60 * 15,
-        )
+        _set_auth_cookies(response, access=access)
 
         return response
 
@@ -143,7 +148,15 @@ class LogoutView(APIView):
             status=status.HTTP_200_OK,
         )
 
-        response.delete_cookie("access_token", samesite="Lax")
-        response.delete_cookie("refresh_token", samesite="Lax")
-        response.delete_cookie("csrftoken", samesite="Lax")
+        cookie_kwargs = {
+            "path": settings.SIMPLE_JWT["AUTH_COOKIE_PATH"],
+            "samesite": settings.SIMPLE_JWT["AUTH_COOKIE_SAMESITE"],
+        }
+        response.delete_cookie(settings.SIMPLE_JWT["AUTH_COOKIE"], **cookie_kwargs)
+        response.delete_cookie(settings.SIMPLE_JWT["AUTH_COOKIE_REFRESH"], **cookie_kwargs)
+        response.delete_cookie(
+            settings.CSRF_COOKIE_NAME,
+            path="/",
+            samesite=settings.CSRF_COOKIE_SAMESITE,
+        )
         return response

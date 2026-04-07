@@ -7,6 +7,7 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 
@@ -25,20 +26,26 @@ from .serializers import (
 )
 from .services import (
     accept_invitation,
+    ChatSessionAccessError,
+    create_chat_message,
     create_group_chat_session,
     create_or_get_direct_chat_session,
     create_or_get_invitation,
+    get_chat_session_for_member,
     reject_invitation,
 )
 
 User = get_user_model()
 
 
+
+
+
 class ChatSessionView(APIView):
     """
-    與聊天室相關的操作：建立、查詢、更新聊天室成員。
-    1. GET /chat/sessions/ - 列出使用者所屬的聊天室
-    2. POST /chat/sessions/ - 建立新的聊天室
+    Chat room operations: create rooms, query rooms, and manage members.
+    1. GET /chat/sessions/ - list chat rooms the user belongs to
+    2. POST /chat/sessions/ - create a new chat room
     """
 
     permission_classes = [IsAuthenticated]
@@ -47,7 +54,11 @@ class ChatSessionView(APIView):
 
         chat_sessions = ChatSession.objects.filter(
             members__user=request.user
-        ).select_related("owner").prefetch_related("members__user").order_by("-update_date")
+        ).select_related("owner").prefetch_related(
+            "members__user",
+            "invitations__inviter", # prefetch inviter user
+            "invitations__invitee", # prefetch invitee user for name resolution
+        ).order_by("-update_date")
 
         serializer = ChatSessionSerializer(
             chat_sessions,
@@ -59,17 +70,43 @@ class ChatSessionView(APIView):
 
     def post(self, request):
         """
-        在此建立的聊天室為群組聊天室，建立者為 owner,不會出現單人聊天室。
+        Rooms created here are group chats.
+        The creator becomes the owner, and no single-member room is created.
         """
-        chat_session = create_group_chat_session(request.user)
+        raw_name = request.data.get("name")
+        if raw_name is None or not isinstance(raw_name, str):
+            return Response(
+                {"detail": "name is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        return Response(
-            ChatSessionSerializer(
-                chat_session,
-                context={"request": request},
-            ).data,
-            status=status.HTTP_201_CREATED,
+        normalized_name = raw_name.strip()
+        if not normalized_name:
+            return Response(
+                {"detail": "name must not be blank"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        chat_session = create_group_chat_session(request.user, name=normalized_name)
+
+        serializer = ChatSessionSerializer(
+            chat_session,
+            context={"request": request},
         )
+
+        return Response(serializer.data, status=status.HTTP_201_CREATED,)
+
+
+def _require_member_chat_session(uri: str, user):
+    """
+    Helper function to get a chat session for a member user.
+    """
+    try:
+        return get_chat_session_for_member(uri=uri, user=user)
+    except ChatSession.DoesNotExist as exc:
+        raise NotFound("Chat session not found.") from exc
+    except ChatSessionAccessError as exc:
+        raise PermissionDenied(str(exc)) from exc
 
 
 class ChatSessionDetailView(APIView):
@@ -81,14 +118,9 @@ class ChatSessionDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
     def patch(self, request, uri):
-        chat_session = get_object_or_404(ChatSession, uri=uri)
+        chat_session = _require_member_chat_session(uri=uri, user=request.user)
 
-        if not chat_session.members.filter(user=request.user).exists():
-            return Response(
-                {"detail": "You are not a member of this chat session."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
+        """Check if the chat session is a group chat. """
         if chat_session.chat_type != ChatSessionType.GROUP:
             return Response(
                 {"detail": "Only group chat rooms can be renamed."},
@@ -109,23 +141,28 @@ class ChatSessionDetailView(APIView):
             )
 
         normalized_name = raw_name.strip()
-        chat_session.name = normalized_name or None
+        if not normalized_name:
+            return Response(
+                {"detail": "name must not be blank"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        chat_session.name = normalized_name
         chat_session.save(update_fields=["name", "update_date"])
         _notify_room_renamed(chat_session)
 
-        return Response(
-            ChatSessionSerializer(
-                chat_session,
-                context={"request": request},
-            ).data
+        serializer = ChatSessionSerializer(
+            chat_session,
+            context={"request": request},
         )
+        return Response(serializer.data)
 
 
 class DirectChatSessionView(APIView):
     """
-    建立/取得 1:1 聊天室。
-    - 若同一對使用者已經有 direct room，回傳既有房間
-    - 否則建立新房間並加入兩位成員
+    Create or retrieve a 1:1 chat room.
+    - If the same pair of users already has a direct room, return it
+    - Otherwise create a new room and add both users
     """
 
     permission_classes = [IsAuthenticated]
@@ -158,6 +195,25 @@ class DirectChatSessionView(APIView):
         if existing_direct_session and not existing_direct_session.members.filter(
             user=request.user
         ).exists():
+            reverse_pending_invitation = ChatInvitation.objects.filter(
+                chat_session=existing_direct_session,
+                inviter=invitee,
+                invitee=request.user,
+                status=ChatInvitationStatus.PENDING,
+            ).first()
+            if reverse_pending_invitation:
+                _, member_created = accept_invitation(reverse_pending_invitation)
+                if member_created:
+                    _notify_member_joined(reverse_pending_invitation)
+                return Response(
+                    ChatSessionSerializer(
+                        existing_direct_session,
+                        context={"request": request},
+                    ).data,
+                    status=status.HTTP_200_OK,
+                )
+            
+            
             return Response(
                 {
                     "code": "invitation_pending",
@@ -203,21 +259,14 @@ class DirectChatSessionView(APIView):
 
 class ChatSessionMessageView(APIView):
     """
-    與聊天室訊息相關的操作：建立、查詢、更新聊天室訊息。
-    1. GET chatrooms/<str:uri>/messages/ - 顯示出該聊天室中的所有訊息
-    2. POST chatrooms/<str:uri>/messages/ - 在聊天室中發送新訊息
+    Chat message operations: create, query, and update messages.
+    1. GET chatrooms/<str:uri>/messages/ - show all messages in the room
     """
 
     permission_classes = [IsAuthenticated]
 
     def get(self, request, uri):
-        chat_session = get_object_or_404(ChatSession, uri=uri)
-
-        if not chat_session.members.filter(user=request.user).exists():
-            return Response(
-                {"detail": "You are not a member of this chat session."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+        chat_session = _require_member_chat_session(uri=uri, user=request.user)
 
         raw_limit = request.query_params.get("limit", "50")
         try:
@@ -265,45 +314,18 @@ class ChatSessionMessageView(APIView):
             }
         )
 
-    def post(self, request, uri):
-        chat_session = get_object_or_404(ChatSession, uri=uri)
-
-       
-        if not chat_session.members.filter(user=request.user).exists():
-            return Response(
-                {"detail": "You are not a member of this chat session."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        # 把前端送來的資料交給 serializer（準備驗證與存入資料庫）
-        serializer = ChatSessionMessageSerializer(data=request.data)
-
-        # 驗證資料格式是否正確（此時還沒有存資料）
-        serializer.is_valid(raise_exception=True)
-
-        # 儲存資料：實際建立一筆 ChatSessionMessage 到資料庫
-        serializer.save(
-            user=request.user,
-            chat_session=chat_session,
-        )
-
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
     
 
 class ChatSessionMemberView(APIView):
     """
-    與聊天室成員相關的操作
-    1. GET chatrooms/<str:uri>/members/ - 列出聊天室中的所有成員
-    2. Post chatrooms/<str:uri>/members/ - 邀請成員至聊天室
+    Chat room member operations.
+    1. GET chatrooms/<str:uri>/members/ - list all members in the room
+    2. POST chatrooms/<str:uri>/members/ - invite a member to the room
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request, uri):
-        chat_session = get_object_or_404(ChatSession, uri=uri)
-
-        # 只有成員能看成員列表（可選）
-        if not chat_session.members.filter(user=request.user).exists():
-            return Response(status=status.HTTP_403_FORBIDDEN)
+        chat_session = _require_member_chat_session(uri=uri, user=request.user)
 
         members = chat_session.members.select_related("user")
         serializer = ChatSessionMemberSerializer(members, many=True)
@@ -311,7 +333,7 @@ class ChatSessionMemberView(APIView):
     
 
     def post(self, request, uri):
-        chat_session = get_object_or_404(ChatSession, uri=uri)
+        chat_session = _require_member_chat_session(uri=uri, user=request.user)
 
         if chat_session.owner != request.user:
             return Response(
@@ -377,7 +399,7 @@ class ChatSessionMemberView(APIView):
 
 class ChatInvitationListView(APIView):
     """
-    列出目前使用者收到的邀請（pending）。
+    List the current user's pending invitations.
     """
 
     permission_classes = [IsAuthenticated]
@@ -389,9 +411,6 @@ class ChatInvitationListView(APIView):
         ).select_related(
             "inviter",
             "chat_session",
-            "chat_session__owner",
-        ).prefetch_related(
-            "chat_session__members__user",
         ).order_by("-create_date")
         serializer = ChatInvitationSerializer(
             invitations,
@@ -403,7 +422,8 @@ class ChatInvitationListView(APIView):
 
 class ChatInvitationRespondView(APIView):
     """
-    回覆邀請：accept / reject。
+    
+    Respond to an invitation: accept / reject.
     """
 
     permission_classes = [IsAuthenticated]
@@ -436,7 +456,7 @@ class ChatInvitationRespondView(APIView):
 
         if action == "accept":
             _, member_created = accept_invitation(invitation)
-            # 只有第一次加入聊天室時才廣播成員加入事件。
+            # Broadcast the member-joined event only the first time the user joins the room.
             if member_created:
                 _notify_member_joined(invitation)
         else:

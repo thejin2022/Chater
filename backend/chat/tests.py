@@ -5,8 +5,16 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from .models import ChatSession, ChatSessionMember, ChatSessionMessage
-from .views import ChatSessionMessageView
+from .models import (
+    ChatInvitation,
+    ChatInvitationStatus,
+    ChatSession,
+    ChatSessionMember,
+    ChatSessionMessage,
+    ChatSessionType,
+)
+from .services import create_chat_message, create_or_get_direct_chat_session
+from .views import ChatSessionMessageView, ChatSessionView, DirectChatSessionView
 
 User = get_user_model()
 
@@ -96,3 +104,94 @@ def test_search_messages_are_sorted_by_create_date_ascending():
     assert response.status_code == 200
     result_messages = [item["message"] for item in response.data["results"]]
     assert result_messages == ["keyword first", "keyword second", "keyword third"]
+
+
+@pytest.mark.django_db
+def test_get_messages_requires_membership():
+    owner = User.objects.create_user(username="owner", password="password123")
+    outsider = User.objects.create_user(username="outsider", password="password123")
+    chat_session = ChatSession.objects.create(owner=owner)
+    ChatSessionMember.objects.create(chat_session=chat_session, user=owner)
+
+    request = APIRequestFactory().get(f"/api/chat/chatrooms/{chat_session.uri}/messages/")
+    force_authenticate(request, user=outsider)
+    response = ChatSessionMessageView.as_view()(request, uri=chat_session.uri)
+
+    assert response.status_code == 403
+    assert response.data["detail"] == "You are not a member of this chat session."
+
+
+@pytest.mark.django_db
+def test_create_chat_message_service_persists_message():
+    user, chat_session = _build_member_and_session()
+
+    message = create_chat_message(
+        chat_session=chat_session,
+        user=user,
+        message_text="hello from service",
+    )
+
+    assert message.chat_session == chat_session
+    assert message.user == user
+    assert message.message == "hello from service"
+
+
+@pytest.mark.django_db
+def test_direct_chat_post_auto_accepts_reverse_pending_invitation():
+    alice = User.objects.create_user(username="alice", password="password123")
+    bob = User.objects.create_user(username="bob", password="password123")
+
+    chat_session, _ = create_or_get_direct_chat_session(
+        initiator=alice,
+        invitee=bob,
+    )
+    invitation = ChatInvitation.objects.create(
+        chat_session=chat_session,
+        inviter=alice,
+        invitee=bob,
+        status=ChatInvitationStatus.PENDING,
+    )
+
+    request = APIRequestFactory().post(
+        "/api/chat/chatrooms/direct/",
+        {"username": "alice"},
+        format="json",
+    )
+    force_authenticate(request, user=bob)
+    response = DirectChatSessionView.as_view()(request)
+
+    invitation.refresh_from_db()
+
+    assert response.status_code == 200
+    assert response.data["uri"] == chat_session.uri
+    assert invitation.status == ChatInvitationStatus.ACCEPTED
+    assert chat_session.members.filter(user=bob).exists()
+
+
+@pytest.mark.django_db
+def test_group_chat_creation_requires_name():
+    user = User.objects.create_user(username="creator", password="password123")
+    request = APIRequestFactory().post("/api/chat/chatrooms/", {}, format="json")
+    force_authenticate(request, user=user)
+
+    response = ChatSessionView.as_view()(request)
+
+    assert response.status_code == 400
+    assert response.data["detail"] == "name is required"
+
+
+@pytest.mark.django_db
+def test_group_chat_creation_uses_trimmed_name():
+    user = User.objects.create_user(username="creator2", password="password123")
+    request = APIRequestFactory().post(
+        "/api/chat/chatrooms/",
+        {"name": "  Product Team  "},
+        format="json",
+    )
+    force_authenticate(request, user=user)
+
+    response = ChatSessionView.as_view()(request)
+
+    assert response.status_code == 201
+    assert response.data["name"] == "Product Team"
+    assert response.data["chat_type"] == ChatSessionType.GROUP

@@ -79,11 +79,15 @@ export async function fetchCurrentUser(
 }
 
 
-export async function createChatSession() {
+export async function createChatSession(name: string) {
   const response = await authorizedRequest(
     "/chat/chatrooms/", 
     {
       method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name }),
     }
   );
 

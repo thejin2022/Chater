@@ -10,13 +10,12 @@ from .views import (
 )
 
 urlpatterns = [
-    # 建立聊天室（POST）
+ 
     path("chatrooms/", ChatSessionView.as_view(), name="chat-session-create"),
 
-    # 建立/取得 1:1 聊天室（POST）
     path("chatrooms/direct/", DirectChatSessionView.as_view(), name="chat-session-direct"),
 
-    # 邀請列表 / 回覆邀請
+    # Invitation list / invitation response
     path("invitations/", ChatInvitationListView.as_view(), name="chat-invitations"),
     path(
         "invitations/<int:invitation_id>/respond/",
@@ -24,10 +23,10 @@ urlpatterns = [
         name="chat-invitation-respond",
     ),
 
-    # 加入聊天室（PATCH）
+    # Update chat room (PATCH)
     path("chatrooms/<str:uri>/", ChatSessionDetailView.as_view(), name="chat-session-detail"),
 
-    # 取得 / 發送聊天室訊息（GET / POST）
+    # Retrieve / send chat room messages (GET / POST)
     path(
         "chatrooms/<str:uri>/messages/",
         ChatSessionMessageView.as_view(),

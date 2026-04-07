@@ -136,8 +136,16 @@ export default function Chat() {
   }
 
   async function handleStartChat() {
+    const input = window.prompt("Group chat name");
+    if (input === null) return;
+    const name = input.trim();
+    if (!name) {
+      alert("Group name is required");
+      return;
+    }
+
     try {
-      const data = await createChatSession();
+      const data = await createChatSession(name);
       navigate(`/chats/${data.uri}`);
     } catch (err: any) {
       alert(err.message);
@@ -176,6 +184,7 @@ export default function Chat() {
     try {
       socketRef.current?.send(
         JSON.stringify({
+          type: "send_message",
           message: text,
         })
       );
@@ -279,6 +288,10 @@ export default function Chat() {
     socket.onmessage = (event) => {
       const payload = JSON.parse(event.data);
 
+      if (payload.type === "error") {
+        return;
+      }
+
       if (payload.type === "member_joined") {
         loadMembers();
         const systemNotice: ChatMessage = {
@@ -290,11 +303,11 @@ export default function Chat() {
         return;
       }
 
-      const msg: ChatMessage = payload;
-      if ("error" in msg) {
+      if (payload.type !== "chat_message") {
         return;
       }
 
+      const msg: ChatMessage = payload;
       setMessages((prev) => sortMessages([...prev, msg]));
     };
 
@@ -351,7 +364,7 @@ export default function Chat() {
           );
         }
       } catch {
-        // ignore malformed payload
+        
       }
     };
 

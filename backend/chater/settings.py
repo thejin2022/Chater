@@ -171,6 +171,8 @@ if ENABLE_CORS:
     )
     CORS_ALLOW_CREDENTIALS = env_bool("CORS_ALLOW_CREDENTIALS", True)
 
+    
+
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(
         minutes=int(os.getenv("JWT_ACCESS_MINUTES", "60"))
@@ -192,9 +194,10 @@ SIMPLE_JWT = {
     # Cookie-based JWT
     "AUTH_COOKIE": "access_token",
     "AUTH_COOKIE_REFRESH": "refresh_token",
-
+    "AUTH_COOKIE_HTTP_ONLY": True,
     "AUTH_COOKIE_SECURE": env_bool("JWT_COOKIE_SECURE", False),
     "AUTH_COOKIE_SAMESITE": os.getenv("JWT_COOKIE_SAMESITE", "Lax"),
+    "AUTH_COOKIE_PATH": "/",
 }
 
 

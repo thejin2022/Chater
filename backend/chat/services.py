@@ -1,6 +1,5 @@
 from typing import TYPE_CHECKING
 
-from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser
 from django.db import transaction
 
@@ -9,18 +8,36 @@ from .models import (
     ChatInvitationStatus,
     ChatSession,
     ChatSessionMember,
+    ChatSessionMessage,
     ChatSessionType,
     generate_direct_pair_key,
 )
 
-User = get_user_model()
-
 if TYPE_CHECKING:
-
     UserType = AbstractBaseUser
 
 
-def create_group_chat_session(owner: "UserType") -> ChatSession:
+class ChatSessionAccessError(PermissionError):
+    pass
+
+
+
+def get_chat_session_for_member(uri: str, user: "UserType") -> ChatSession:
+    chat_session = ChatSession.objects.select_related("owner").prefetch_related(
+        "members__user"
+    ).filter(uri=uri).first()
+
+    if chat_session is None:
+        raise ChatSession.DoesNotExist
+
+    if not chat_session.members.filter(user=user).exists():
+        raise ChatSessionAccessError("You are not a member of this chat session.")
+
+    return chat_session
+
+
+
+def create_group_chat_session(owner: "UserType", name: str) -> ChatSession:
     """
     Create a group chat and ensure owner membership is created atomically.
     """
@@ -28,6 +45,7 @@ def create_group_chat_session(owner: "UserType") -> ChatSession:
         chat_session = ChatSession.objects.create(
             owner=owner,
             chat_type=ChatSessionType.GROUP,
+            name=name,
         )
         ChatSessionMember.objects.get_or_create(
             chat_session=chat_session,
@@ -52,6 +70,7 @@ def create_or_get_direct_chat_session(
             defaults={
                 "owner": initiator,
                 "chat_type": ChatSessionType.DIRECT,
+                "name": None,
             },
         )
         ChatSessionMember.objects.get_or_create(
@@ -84,6 +103,19 @@ def create_or_get_invitation(
         invitation.save(update_fields=["status", "update_date"])
 
     return invitation, created
+
+
+
+def create_chat_message(
+    chat_session: ChatSession,
+    user: "UserType",
+    message_text: str,
+) -> ChatSessionMessage:
+    return ChatSessionMessage.objects.create(
+        chat_session=chat_session,
+        user=user,
+        message=message_text,
+    )
 
 
 def accept_invitation(

@@ -22,9 +22,6 @@ export type ChatMember = {
   user: {
     id: number;
     username: string;
-    email?: string;
-    first_name?: string;
-    last_name?: string;
   };
   create_date?: string;
 };
