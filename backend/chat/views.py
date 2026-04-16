@@ -27,7 +27,6 @@ from .serializers import (
 from .services import (
     accept_invitation,
     ChatSessionAccessError,
-    create_chat_message,
     create_group_chat_session,
     create_or_get_direct_chat_session,
     create_or_get_invitation,

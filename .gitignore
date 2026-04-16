@@ -29,3 +29,4 @@ build/
 backend/chat/management/
 backend/staticfiles/
 frontend/dist/
+docs/chat_seed_data_sdd.md

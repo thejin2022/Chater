@@ -46,6 +46,15 @@ services:
     volumes:
       - static_data:/app/staticfiles:ro
 
+  k6:
+    image: grafana/k6:latest
+    working_dir: /scripts
+    volumes:
+      - ./k6:/scripts
+    networks:
+      - default
+
+
 volumes:
   db_data:
   static_data:
