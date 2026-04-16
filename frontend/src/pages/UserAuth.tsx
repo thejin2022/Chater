@@ -2,72 +2,41 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { signIn, signUp } from "../services/authApi";
+import "../styles/auth.css";
 
 export default function UserAuth() {
   const navigate = useNavigate();
-
-  /* ===== Tab ===== */
-  const [activeTab, setActiveTab] =
-    useState<"signup" | "signin">("signup");
-
-  /* ===== 共用狀態 ===== */
+  const [activeTab, setActiveTab] = useState<"signup" | "signin">("signup");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  /* ===== Sign In ===== */
   const [signinUsername, setSigninUsername] = useState("");
   const [signinPassword, setSigninPassword] = useState("");
-
-  /* ===== Sign Up ===== */
   const [signupUsername, setSignupUsername] = useState("");
   const [signupPassword, setSignupPassword] = useState("");
 
-  /* =========================
-     Sign In
-     ========================= */
-async function handleSignIn(e: React.FormEvent) {
-  e.preventDefault();
-  console.log("[UserAuth] submit clicked");
+  async function handleSignIn(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
 
-  setLoading(true);
-  setError("");
-
-  try {
-    console.log("[UserAuth] before signIn");
-
-    await signIn(signinUsername, signinPassword);
-
-    console.log("[UserAuth] signIn success");
-
-    sessionStorage.setItem("username", signinUsername);
-
-    console.log("[UserAuth] navigating to /chats");
-    navigate("/chats");
-  } catch (err: any) {
-    console.error("[UserAuth] signIn failed:", err);
-    setError(err?.message || "Login failed");
-  } finally {
-    console.log("[UserAuth] finally");
-    setLoading(false);
+    try {
+      await signIn(signinUsername, signinPassword);
+      navigate("/chats");
+    } catch (err: any) {
+      setError(err?.message || "Login failed");
+    } finally {
+      setLoading(false);
+    }
   }
-}
 
-
-  /* =========================
-     Sign Up
-     ========================= */
   async function handleSignUp(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
 
     try {
-      /**
-       * 註冊流程與 HttpOnly 無直接關係
-       * 不涉及 token，因此不需要額外調整
-       */
       await signUp(signupUsername, signupPassword);
-
       alert("Register success, please sign in");
       setActiveTab("signin");
     } catch (err: any) {
@@ -77,126 +46,96 @@ async function handleSignIn(e: React.FormEvent) {
     }
   }
 
-  /* =========================
-     UI
-     ========================= */
   return (
-    <div
-      style={{
-        height: "100vh",
-        width: "100vw",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: "#919ca4ff",
-      }}
-    >
-      <div
-        className="bg-white rounded shadow p-4"
-        style={{ width: "100%", maxWidth: "480px" }}
-      >
-        <div className="text-center mb-4">
-          <h1>Welcome to Chater!</h1>
-        </div>
+    <div className="auth-page">
+      <section className="auth-shell">
+        <aside className="auth-hero">
+          <div>
+            <h1 className="auth-title">Chater</h1>
+            <p className="auth-subtitle">Fast chat for groups and direct messages.</p>
+          </div>
+          <ul className="auth-bullets">
+            <li>Real-time rooms with WebSocket updates</li>
+            <li>Direct chat, group invite, and room rename</li>
+            <li>Message search and history pagination</li>
+          </ul>
+        </aside>
 
-        {/* Tabs */}
-        <ul className="nav nav-tabs nav-justified">
-          <li className="nav-item">
-            <a
-              href="#"
-              className={`nav-link ${
-                activeTab === "signup" ? "active" : ""
-              }`}
-              onClick={(e) => {
-                e.preventDefault();
-                setActiveTab("signup");
-              }}
+        <main className="auth-panel">
+          <div className="auth-tabs" role="tablist" aria-label="auth tabs">
+            <button
+              type="button"
+              className={`auth-tab ${activeTab === "signup" ? "active" : ""}`}
+              onClick={() => setActiveTab("signup")}
             >
-              Sign Up
-            </a>
-          </li>
-
-          <li className="nav-item">
-            <a
-              href="#"
-              className={`nav-link ${
-                activeTab === "signin" ? "active" : ""
-              }`}
-              onClick={(e) => {
-                e.preventDefault();
-                setActiveTab("signin");
-              }}
+              Sign up
+            </button>
+            <button
+              type="button"
+              className={`auth-tab ${activeTab === "signin" ? "active" : ""}`}
+              onClick={() => setActiveTab("signin")}
             >
-              Sign In
-            </a>
-          </li>
-        </ul>
+              Sign in
+            </button>
+          </div>
 
-        {/* Form */}
-        <div className="border border-top-0 p-4">
-          {activeTab === "signup" && (
-            <form onSubmit={handleSignUp}>
-              <input
-                className="form-control mb-3"
-                placeholder="Username"
-                value={signupUsername}
-                onChange={(e) =>
-                  setSignupUsername(e.target.value)
-                }
-              />
-              <input
-                type="password"
-                className="form-control mb-3"
-                placeholder="Password"
-                value={signupPassword}
-                onChange={(e) =>
-                  setSignupPassword(e.target.value)
-                }
-              />
-              <button
-                className="btn btn-primary w-100"
-                disabled={loading}
-              >
+          {activeTab === "signup" ? (
+            <form className="auth-form" onSubmit={handleSignUp}>
+              <h2 className="auth-heading">Create your account</h2>
+              <label className="auth-label">
+                Username
+                <input
+                  className="auth-input"
+                  placeholder="Choose a username"
+                  value={signupUsername}
+                  onChange={(e) => setSignupUsername(e.target.value)}
+                />
+              </label>
+              <label className="auth-label">
+                Password
+                <input
+                  type="password"
+                  className="auth-input"
+                  placeholder="Create a password"
+                  value={signupPassword}
+                  onChange={(e) => setSignupPassword(e.target.value)}
+                />
+              </label>
+              <button className="auth-submit" disabled={loading}>
                 {loading ? "Signing up..." : "Sign up"}
               </button>
+              {error && <div className="auth-error">{error}</div>}
             </form>
-          )}
-
-          {activeTab === "signin" && (
-            <form onSubmit={handleSignIn}>
-              <input
-                className="form-control mb-3"
-                placeholder="Username"
-                value={signinUsername}
-                onChange={(e) =>
-                  setSigninUsername(e.target.value)
-                }
-              />
-              <input
-                type="password"
-                className="form-control mb-3"
-                placeholder="Password"
-                value={signinPassword}
-                onChange={(e) =>
-                  setSigninPassword(e.target.value)
-                }
-              />
-              <button
-                className="btn btn-primary w-100"
-                disabled={loading}
-              >
+          ) : (
+            <form className="auth-form" onSubmit={handleSignIn}>
+              <h2 className="auth-heading">Welcome back</h2>
+              <label className="auth-label">
+                Username
+                <input
+                  className="auth-input"
+                  placeholder="Your username"
+                  value={signinUsername}
+                  onChange={(e) => setSigninUsername(e.target.value)}
+                />
+              </label>
+              <label className="auth-label">
+                Password
+                <input
+                  type="password"
+                  className="auth-input"
+                  placeholder="Your password"
+                  value={signinPassword}
+                  onChange={(e) => setSigninPassword(e.target.value)}
+                />
+              </label>
+              <button className="auth-submit" disabled={loading}>
                 {loading ? "Signing in..." : "Sign in"}
               </button>
-
-              {error && (
-                <div className="text-danger mt-2">
-                  {error}
-                </div>
-              )}
+              {error && <div className="auth-error">{error}</div>}
             </form>
           )}
-        </div>
-      </div>
+        </main>
+      </section>
     </div>
   );
 }

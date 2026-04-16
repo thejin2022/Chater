@@ -1,7 +1,7 @@
 import { Navigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import React from "react";
-import { API_BASE_URL } from "../config/Api";
+import { fetchCurrentUser } from "../services/chatApi";
 
 /**
  * RequireAuth（HttpOnly Cookie + Vite proxy 版本）
@@ -12,24 +12,16 @@ import { API_BASE_URL } from "../config/Api";
  * - 401 → 未登入
  */
 export default function RequireAuth({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+  children,}: {children: React.ReactNode;}) 
+{
   const [loading, setLoading] = useState(true);
   const [authed, setAuthed] = useState(false);
 
   useEffect(() => {
     async function checkAuth() {
       try {
-        const res = await fetch(
-          `${API_BASE_URL}/chat/chatrooms/`, // ✅ 只用相對路徑
-          {
-            credentials: "include",
-          }
-        );
-
-        setAuthed(res.ok);
+        await fetchCurrentUser();
+        setAuthed(true);
       } catch {
         setAuthed(false);
       } finally {

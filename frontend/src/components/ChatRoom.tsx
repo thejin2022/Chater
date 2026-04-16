@@ -1,12 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChatMember, ChatMessage } from "../types/chat";
 
-/**
- * ChatRoom Props
- * -------------------------
- * ChatRoom 是「純 UI component」
- * 它不定義資料結構，只使用外部定義好的型別
- */
 type Props = {
   messages: ChatMessage[];
   members: ChatMember[];
@@ -74,7 +68,6 @@ export default function ChatRoom({
       container.scrollTop = heightDiff;
       shouldRestoreScrollRef.current = false;
     } else if (messages.length > prevMessageCountRef.current) {
-      // 新訊息新增時，預設捲到最底部。
       container.scrollTop = container.scrollHeight;
     }
 
@@ -90,38 +83,18 @@ export default function ChatRoom({
   };
 
   return (
-    <div
-      className="card"
-      style={{
-        height: "70vh",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      {/* ===== Header ===== */}
-      <div
-        className="card-header"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+    <div className="room-wrap">
+      <div className="room-head">
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
           {onBack && (
-            <button
-              type="button"
-              className="btn btn-sm btn-outline-secondary"
-              onClick={onBack}
-            >
+            <button type="button" className="btn-outline" onClick={onBack}>
               Back
             </button>
           )}
 
           {isEditingRoomName ? (
-            <div className="d-flex gap-2 align-items-center">
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <input
-                className="form-control form-control-sm"
                 style={{ width: "220px" }}
                 value={roomNameInput}
                 onChange={(e) => setRoomNameInput(e.target.value)}
@@ -129,7 +102,7 @@ export default function ChatRoom({
               />
               <button
                 type="button"
-                className="btn btn-sm btn-primary"
+                className="btn-primary-solid"
                 onClick={() => {
                   onRenameRoom?.(roomNameInput);
                   setIsEditingRoomName(false);
@@ -139,7 +112,7 @@ export default function ChatRoom({
               </button>
               <button
                 type="button"
-                className="btn btn-sm btn-outline-secondary"
+                className="btn-secondary-soft"
                 onClick={() => {
                   setRoomNameInput(roomTitle);
                   setIsEditingRoomName(false);
@@ -150,11 +123,11 @@ export default function ChatRoom({
             </div>
           ) : (
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span>{roomTitle}</span>
+              <span className="room-title">{roomTitle}</span>
               {canRenameRoom && onRenameRoom && (
                 <button
                   type="button"
-                  className="btn btn-sm btn-outline-primary"
+                  className="btn-outline"
                   onClick={() => setIsEditingRoomName(true)}
                 >
                   Rename
@@ -163,11 +136,11 @@ export default function ChatRoom({
             </div>
           )}
         </div>
-        {/* 成員名單切換按鈕，讓畫面不會一直被側欄佔滿。 */}
+
         {chatType !== "direct" && (
           <button
             type="button"
-            className="btn btn-sm btn-outline-secondary"
+            className="btn-outline"
             onClick={() => setShowMembers((prev) => !prev)}
           >
             {showMembers ? "Hide Members" : `Members (${members.length})`}
@@ -175,18 +148,9 @@ export default function ChatRoom({
         )}
       </div>
 
-      <div
-        style={{
-          padding: "8px 12px",
-          borderBottom: "1px solid #ddd",
-          backgroundColor: "#fff",
-          display: "flex",
-          gap: "8px",
-        }}
-      >
+      <div className="room-search">
         <input
           type="text"
-          className="form-control form-control-sm"
           placeholder="Search keyword in this chat"
           value={searchKeyword}
           onChange={(e) => onSearchKeywordChange(e.target.value)}
@@ -197,46 +161,29 @@ export default function ChatRoom({
             }
           }}
         />
-        <button
-          type="button"
-          className="btn btn-sm btn-outline-primary"
-          onClick={onSearch}
-        >
+        <button type="button" className="btn-outline" onClick={onSearch}>
           Search
         </button>
         <button
           type="button"
-          className="btn btn-sm btn-outline-secondary"
+          className="btn-outline"
           onClick={onClearSearch}
           disabled={!isSearchActive}
         >
           Clear
         </button>
       </div>
+
       {isSearchActive && (
-        <div
-          style={{
-            padding: "4px 12px",
-            fontSize: "12px",
-            color: "#555",
-            borderBottom: "1px solid #eee",
-            backgroundColor: "#fff",
-          }}
-        >
+        <div style={{ padding: "4px 12px", fontSize: "12px", color: "var(--muted)" }}>
           Filtering messages by keyword: "{searchKeyword.trim()}"
         </div>
       )}
 
-      {/* ===== Message area + Members panel ===== */}
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          minHeight: 0,
-        }}
-      >
+      <div className="room-body">
         <div
           ref={messagesContainerRef}
+          className="message-scroll"
           onScroll={(e) => {
             if (!onLoadOlderMessages || !hasMoreMessages || isLoadingOlderMessages) {
               return;
@@ -249,94 +196,39 @@ export default function ChatRoom({
             shouldRestoreScrollRef.current = true;
             onLoadOlderMessages();
           }}
-          style={{
-            flex: 1,
-            overflowY: "auto",
-            padding: "12px",
-            backgroundColor: "#fafafa",
-          }}
         >
           {isLoadingOlderMessages && (
-            <div style={{ textAlign: "center", color: "#777", marginBottom: "8px" }}>
+            <div style={{ textAlign: "center", color: "var(--muted)", marginBottom: "8px" }}>
               Loading older messages...
             </div>
           )}
 
           {messages.length === 0 && (
-            <div
-              style={{
-                textAlign: "center",
-                color: "#999",
-                marginTop: "20px",
-              }}
-            >
+            <div style={{ textAlign: "center", color: "var(--muted)", marginTop: "20px" }}>
               No messages yet
             </div>
           )}
 
           {messages.map((msg, index) => {
-            /**
-             * 正規化 username
-             * - 避免大小寫 / 空白導致比較失敗
-             */
-            const normalizedCurrentUser =
-              currentUsername?.trim().toLowerCase() ?? "";
-
-            const normalizedMessageUser =
-              msg.user.username.trim().toLowerCase();
-
-            const isMe =
-              normalizedMessageUser === normalizedCurrentUser;
-
-            // 只有在「第一則」或「前一則不是同一個人」時才顯示名稱。
+            const normalizedCurrentUser = currentUsername?.trim().toLowerCase() ?? "";
+            const normalizedMessageUser = msg.user.username.trim().toLowerCase();
+            const isMe = normalizedMessageUser === normalizedCurrentUser;
             const prevMessage = index > 0 ? messages[index - 1] : null;
-            const normalizedPrevUser =
-              prevMessage?.user.username.trim().toLowerCase() ?? "";
-            const showUsername =
-              index === 0 || normalizedPrevUser !== normalizedMessageUser;
+            const normalizedPrevUser = prevMessage?.user.username.trim().toLowerCase() ?? "";
+            const showUsername = index === 0 || normalizedPrevUser !== normalizedMessageUser;
 
             return (
               <div
-                key={`${msg.id ?? "msg"}-${msg.createdAt ?? index}-${index}`}
-                style={{
-                  display: "flex",
-                  justifyContent: isMe
-                    ? "flex-end"
-                    : "flex-start",
-                  marginBottom: "8px",
-                }}
+                key={`${msg.id ?? "msg"}-${msg.create_date ?? index}-${index}`}
+                className={`message-row ${isMe ? "mine" : ""}`}
               >
-                <div
-                  style={{
-                    maxWidth: "70%",
-                    display: "flex",
-                    flexDirection: "column",
-                  }}
-                >
+                <div className="message-stack">
                   {showUsername && (
-                    <div
-                      style={{
-                        fontSize: "12px",
-                        color: "#666",
-                        marginBottom: "4px",
-                        textAlign: isMe ? "right" : "left",
-                      }}
-                    >
+                    <div className={`message-username ${isMe ? "mine" : ""}`}>
                       {msg.user.username}
                     </div>
                   )}
-                  <div
-                    style={{
-                      padding: "8px 12px",
-                      borderRadius: "12px",
-                      backgroundColor: isMe
-                        ? "#0d6efd"
-                        : "#e9ecef",
-                      color: isMe ? "#fff" : "#000",
-                    }}
-                  >
-                    {msg.message}
-                  </div>
+                  <div className={`message-bubble ${isMe ? "mine" : ""}`}>{msg.message}</div>
                 </div>
               </div>
             );
@@ -344,30 +236,15 @@ export default function ChatRoom({
         </div>
 
         {chatType !== "direct" && showMembers && (
-          <aside
-            style={{
-              width: "220px",
-              borderLeft: "1px solid #ddd",
-              backgroundColor: "#fff",
-              padding: "12px",
-              overflowY: "auto",
-            }}
-          >
-            <div
-              style={{
-                fontWeight: 600,
-                marginBottom: "10px",
-              }}
-            >
-              Members ({members.length})
-            </div>
+          <aside className="member-panel">
+            <div className="member-title">Members ({members.length})</div>
 
             {chatType === "group" && canInvite && onInviteMember && (
               <div style={{ marginBottom: "12px" }}>
-                <div className="d-flex justify-content-between align-items-center mb-2">
-                  <div style={{ fontSize: "12px" }}>Group invite</div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                  <div style={{ fontSize: "12px", color: "var(--muted)" }}>Group invite</div>
                   <button
-                    className="btn btn-sm btn-outline-primary"
+                    className="btn-outline"
                     onClick={() => {
                       setShowInviteInput((prev) => !prev);
                     }}
@@ -375,17 +252,15 @@ export default function ChatRoom({
                     {showInviteInput ? "Cancel" : "Invite member"}
                   </button>
                 </div>
-
                 {showInviteInput && (
-                  <div className="d-flex gap-2">
+                  <div style={{ display: "flex", gap: "8px" }}>
                     <input
-                      className="form-control form-control-sm"
                       value={inviteUsername}
                       onChange={(e) => setInviteUsername(e.target.value)}
                       placeholder="username"
                     />
                     <button
-                      className="btn btn-sm btn-primary"
+                      className="btn-primary-solid"
                       onClick={() => {
                         const trimmed = inviteUsername.trim();
                         if (!trimmed) return;
@@ -402,25 +277,17 @@ export default function ChatRoom({
             )}
 
             {chatType === "group" && !canInvite && (
-              <div style={{ marginBottom: "12px", fontSize: "12px", color: "#666" }}>
+              <div style={{ marginBottom: "12px", fontSize: "12px", color: "var(--muted)" }}>
                 Only the room owner can invite members.
               </div>
             )}
 
             {members.length === 0 && (
-              <div style={{ color: "#777", fontSize: "14px" }}>
-                No members found
-              </div>
+              <div style={{ color: "var(--muted)", fontSize: "14px" }}>No members found</div>
             )}
 
             {members.map((member) => (
-              <div
-                key={member.id}
-                style={{
-                  padding: "6px 0",
-                  borderBottom: "1px solid #f0f0f0",
-                }}
-              >
+              <div key={member.id} className="member-item">
                 {member.user.username}
               </div>
             ))}
@@ -428,26 +295,14 @@ export default function ChatRoom({
         )}
       </div>
 
-      {/* ===== Input ===== */}
-      <form
-        onSubmit={handleSubmit}
-        style={{
-          padding: "8px",
-          borderTop: "1px solid #ddd",
-          display: "flex",
-          gap: "8px",
-        }}
-      >
+      <form onSubmit={handleSubmit} className="room-input">
         <input
           type="text"
-          className="form-control"
           placeholder="Type a message"
           value={input}
           onChange={(e) => setInput(e.target.value)}
         />
-        <button className="btn btn-primary">
-          Send
-        </button>
+        <button className="btn-primary-solid">Send</button>
       </form>
     </div>
   );

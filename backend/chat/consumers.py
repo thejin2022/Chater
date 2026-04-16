@@ -84,7 +84,7 @@ class ChatSessionMessageConsumer(AsyncWebsocketConsumer):
                 "id": message.id,
                 "username": self.user.username,
                 "message": message.message,
-                "created_at": message.create_date.isoformat(),
+                "create_date": message.create_date.isoformat(),
             }
         )
 
@@ -97,7 +97,7 @@ class ChatSessionMessageConsumer(AsyncWebsocketConsumer):
                 "username": event["username"],  # 回應成前端需要的格式
             },
             "message": event["message"],
-            "created_at": event["created_at"],
+            "create_date": event["create_date"],
         }))
 
     async def member_joined(self, event):

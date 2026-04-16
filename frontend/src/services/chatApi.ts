@@ -6,6 +6,14 @@ import type {
   ChatRoomRelation,
 } from "../types/chat";
 
+type CurrentUser = {
+  user_id: number;
+  username: string;
+};
+
+let currentUserCache: CurrentUser | null = null;
+let currentUserRequest: Promise<CurrentUser> | null = null;
+
 /**
  * =========================
  * Chat rooms (list)
@@ -30,24 +38,47 @@ export async function fetchMyChatRooms(): Promise<ChatRoomRelation[]> {
  * =========================
  * 取得目前登入的使用者
  */
-export async function fetchCurrentUser() {
-  const response = await authorizedRequest(
-    "/auth/me/" 
-  );
-
-  if (!response.ok) {
-    throw new Error("Unauthenticated");
-  }
-
-  return response.json();
+export function clearCurrentUserCache() {
+  currentUserCache = null;
+  currentUserRequest = null;
 }
 
-/**
- * =========================
- * Chat session
- * =========================
- * 建立聊天室（回傳 uri）
- */
+export async function fetchCurrentUser(
+  options: { force?: boolean } = {}
+): Promise<CurrentUser> {
+  if (options.force) {
+    clearCurrentUserCache();
+  }
+
+  if (currentUserCache) {
+    return currentUserCache;
+  }
+
+  if (currentUserRequest) {
+    return currentUserRequest;
+  }
+
+  currentUserRequest = (async () => {
+    const response = await authorizedRequest("/auth/me/");
+
+    if (!response.ok) {
+      clearCurrentUserCache();
+      throw new Error("Unauthenticated");
+    }
+
+    const me = (await response.json()) as CurrentUser;
+    currentUserCache = me;
+    return me;
+  })();
+
+  try {
+    return await currentUserRequest;
+  } finally {
+    currentUserRequest = null;
+  }
+}
+
+
 export async function createChatSession() {
   const response = await authorizedRequest(
     "/chat/chatrooms/", 
@@ -63,9 +94,7 @@ export async function createChatSession() {
   return response.json(); // { uri }
 }
 
-/**
- * 建立/取得 1:1 聊天室（依 username）
- */
+
 export async function createDirectChatSession(username: string) {
   const response = await authorizedRequest(
     "/chat/chatrooms/direct/",
@@ -86,12 +115,9 @@ export async function createDirectChatSession(username: string) {
   return response.json(); // { uri, chat_type, ... }
 }
 
-/**
- * =========================
- * Messages
- * =========================
- * 載入聊天室歷史訊息
- */
+
+
+
 export async function fetchChatMessages(
   uri: string,
   params?: { before?: string; limit?: number; keyword?: string }
@@ -119,12 +145,8 @@ export async function fetchChatMessages(
   return response.json();
 }
 
-/**
- * =========================
- * Members
- * =========================
- * 載入聊天室成員清單
- */
+
+
 export async function fetchChatMembers(
   uri: string
 ): Promise<ChatMember[]> {

@@ -72,4 +72,3 @@ CSRF protection is enabled for unsafe methods (`POST`, `PATCH`, `DELETE`, etc.).
 - Nginx serves frontend assets and proxies `/api` + `/ws` to Django ASGI.
 - Redis is used as Channels layer backend for WebSocket messaging.
 - PostgreSQL stores persistent data (users, chat rooms, messages, invitations).
-

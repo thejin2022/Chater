@@ -10,7 +10,6 @@ export default function App() {
         <Route path="/" element={<Navigate to="/auth" replace />} />
         <Route path="/auth" element={<UserAuth />} />
 
-        {/* 支援 /chats 與 /chats/:uri */}
         <Route
           path="/chats/:uri?"
           element={
@@ -21,5 +20,5 @@ export default function App() {
         />
       </Routes>
     </BrowserRouter>
-  );
+  ); 
 }
