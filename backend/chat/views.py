@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
+from django.core.cache import cache 
 
 from .models import (
     ChatInvitation,
@@ -37,6 +38,10 @@ from .services import (
 User = get_user_model()
 
 
+CHAT_SESSIONS_CACHE_TTL_SECONDS = 30
+
+def _chat_sessions_cache_key(user_id: int) -> str:
+    return f"chat:sessions:user:{user_id}:v1"
 
 
 
@@ -50,6 +55,14 @@ class ChatSessionView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        cache_key = _chat_sessions_cache_key(request.user.id)
+        cached_payload = cache.get(cache_key)
+
+        if cached_payload is not None :
+            response =Response(cached_payload)
+            response["X-Chat-Sessions-Cache"] = "HIT"
+            return response
+        
 
         chat_sessions = ChatSession.objects.filter(
             members__user=request.user
@@ -64,7 +77,13 @@ class ChatSessionView(APIView):
             many=True,
             context={"request": request},
         )
-        return Response(serializer.data)
+        payload = serializer.data #序列化後的資料寫進去，快取這 key 的 value 中
+        cache.set(cache_key,payload,CHAT_SESSIONS_CACHE_TTL_SECONDS)
+        response = Response(payload)
+        response["X-Chat-Sessions-Cache"] = "MISS"
+
+        
+        return response
 
 
     def post(self, request):
